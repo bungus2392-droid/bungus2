@@ -1,0 +1,91 @@
+<?php
+// Set the content type to JSON for all responses
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *'); // Allow requests from any origin (for development)
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Define the file paths for storing data
+$usersFile = 'users.json';
+$testsFile = 'tests.json';
+
+// Handle preflight OPTIONS request for CORS
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    exit;
+}
+
+// Function to initialize data files if they don't exist
+function initializeDataFiles($usersFile, $testsFile) {
+    // Initialize users.json if it doesn't exist
+    if (!file_exists($usersFile)) {
+        file_put_contents($usersFile, json_encode([])); // Start with an empty array of users
+    }
+    // Initialize tests.json if it doesn't exist
+    if (!file_exists($testsFile)) {
+        // Start with the initial structure for tests
+        $initialTests = [
+            'كمي' => [],
+            'لفظي' => []
+        ];
+        file_put_contents($testsFile, json_encode($initialTests));
+    }
+}
+
+// Initialize files on script start
+initializeDataFiles($usersFile, $testsFile);
+
+
+// Main logic to handle GET and POST requests
+$method = $_SERVER['REQUEST_METHOD'];
+
+if ($method == 'GET') {
+    // --- HANDLE GET REQUEST: Fetch data from server ---
+
+    // Read data from the JSON files
+    $usersData = json_decode(file_get_contents($usersFile), true);
+    $testsData = json_decode(file_get_contents($testsFile), true);
+
+    // Combine them into a single response object
+    $response = [
+        'usersData' => $usersData,
+        'testsData' => $testsData
+    ];
+
+    // Send the combined data as a JSON response
+    echo json_encode($response);
+
+} elseif ($method == 'POST') {
+    // --- HANDLE POST REQUEST: Save data to server ---
+
+    // Get the JSON data from the request body
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true);
+
+    // Check if the data is valid and contains the expected keys
+    if (isset($data['usersData']) && isset($data['testsData'])) {
+        // Extract users and tests data
+        $usersData = $data['usersData'];
+        $testsData = $data['testsData'];
+
+        // Save the data to their respective files
+        // Use JSON_PRETTY_PRINT for readability
+        // Use JSON_UNESCAPED_UNICODE to correctly handle Arabic characters
+        file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        file_put_contents($testsFile, json_encode($testsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        // Send a success response
+        echo json_encode(['status' => 'success', 'message' => 'Data saved successfully.']);
+
+    } else {
+        // If data is invalid, send an error response
+        http_response_code(400); // Bad Request
+        echo json_encode(['status' => 'error', 'message' => 'Invalid data provided.']);
+    }
+
+} else {
+    // --- HANDLE OTHER METHODS ---
+    http_response_code(405); // Method Not Allowed
+    echo json_encode(['status' => 'error', 'message' => 'Method not allowed.']);
+}
+
+?>

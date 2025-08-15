@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الاختبارات والتقويم</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    @keyframes gradient-animation {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .animated-gradient {
+      background: linear-gradient(-45deg, #005c97, #363795, #007bff, #1e90ff);
+      background-size: 400% 400%;
+      animation: gradient-animation 20s ease infinite;
+    }
+  </style>
+  <script>
+    // To enable dark mode with Tailwind CSS
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Library for Charts (Optional, can be removed if not used) -->
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+  <!-- Library for Excel Export (Optional, can be removed if not used) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+    const { createRoot } = ReactDOM;
+
+    // --| دالة للحصول على المسار الكامل لملف API ديناميكيًا | --
+    const getApiUrl = () => {
+        const { protocol, host, pathname } = window.location;
+        const pathDirectory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        // This should construct a full, valid URL like https://yourdomain.com/folder/api.php
+        return `${protocol}//${host}${pathDirectory}api.php`;
+    };
+    const API_URL = getApiUrl();
+
+    function App() {
+      // Initial state with empty test data
+      const initialTestsData = {
+        'كمي': [],
+        'لفظي': []
+      };
+
+      // State hooks for managing application state
+      const [testsData, setTestsData] = useState(initialTestsData);
+      const [usersData, setUsersData] = useState([]);
+      const [isDataLoaded, setIsDataLoaded] = useState(false); // لتتبع حالة تحميل البيانات الأولية
+
+      const [currentPage, setCurrentPage] = useState('landing');
+      const [loginRole, setLoginRole] = useState(null);
+      const [currentUser, setCurrentUser] = useState(null);
+      const [currentUsername, setCurrentUsername] = useState(null);
+      const [selectedTest, setSelectedTest] = useState(null);
+      const [answers, setAnswers] = useState({});
+      const [timer, setTimer] = useState(0);
+      const [quizSubmitted, setQuizSubmitted] = useState(false);
+      const [loading, setLoading] = useState(false);
+      const [darkMode, setDarkMode] = useState(false);
+      
+      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+
+      // State for manual quiz creation
+      const [showCreateTestForm, setShowCreateTestForm] = useState(false);
+      const [editingTestId, setEditingTestId] = useState(null);
+      const [newTestTitle, setNewTestTitle] = useState('');
+      const [newTestDuration, setNewTestDuration] = useState('');
+      const [newTestMaxAttempts, setNewTestMaxAttempts] = useState('');
+      const [newTestPrerequisite, setNewTestPrerequisite] = useState('');
+      const [newTestQuestions, setNewTestQuestions] = useState([]);
+      const [newTestCategory, setNewTestCategory] = useState('كمي');
+      const [previewQuiz, setPreviewQuiz] = useState(null);
+
+      // State for file upload
+      const [uploadedFile, setUploadedFile] = useState(null);
+      const [fileLoading, setFileLoading] = useState(false);
+      const [showFileUploadModal, setShowFileUploadModal] = useState(false);
+      const [uploadedQuizDuration, setUploadedQuizDuration] = useState('');
+      const [uploadedQuizAttempts, setUploadedQuizAttempts] = useState('');
+      const [uploadedQuizCategory, setUploadedQuizCategory] = useState('كمي');
+      const [uploadedQuizPrerequisite, setUploadedQuizPrerequisite] = useState('');
+
+
+      // State for Login
+      const [devUsername, setDevUsername] = useState('');
+      const [devPassword, setDevPassword] = useState('');
+      const [userUsernameInput, setUserUsernameInput] = useState('');
+      const [userAccessCodeInput, setUserAccessCodeInput] = useState('');
+      const [devUsernameToGenerate, setDevUsernameToGenerate] = useState('');
+      const [loginError, setLoginError] = useState('');
+      
+      // Hardcoded credentials for demonstration
+      const DEV_USERNAME = 'tarek2000';
+      const DEV_PASSWORD = 'BossX@786';
+
+      // --| جلب البيانات الأولية من الخادم عند تحميل التطبيق |--
+      useEffect(() => {
+        const fetchData = async () => {
+          try {
+            console.log("Attempting to fetch data from:", API_URL);
+            const response = await fetch(`${API_URL}?action=getData&t=${new Date().getTime()}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`خطأ في الشبكة: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            const data = await response.json();
+            if (data) {
+                setTestsData(data.testsData || initialTestsData);
+                setUsersData(data.usersData || []);
+            }
+          } catch (error) {
+            console.error("فشل في جلب البيانات:", error);
+          } finally {
+            setIsDataLoaded(true);
+          }
+        };
+        fetchData();
+      }, []);
+
+
+      // Effect for dark mode
+      useEffect(() => {
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }, [darkMode]);
+
+
+      // Effect to handle the timer countdown
+      useEffect(() => {
+        if (currentPage === 'test' && timer > 0) {
+          const intervalId = setInterval(() => {
+            setTimer(prevTimer => prevTimer - 1);
+          }, 1000);
+          return () => clearInterval(intervalId);
+        } else if (currentPage === 'test' && timer === 0 && !quizSubmitted) {
+          handleSubmitTest();
+        }
+      }, [currentPage, timer, quizSubmitted]);
+      
+      // --| دالة حفظ التغييرات في الخادم |--
+      const handleSaveChanges = async () => {
+        try {
+            console.log("Attempting to save data to:", API_URL);
+            const response = await fetch(`${API_URL}?action=saveData`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ testsData, usersData }),
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`خطأ في الشبكة: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            const result = await response.json();
+            if (result.success) {
+                console.log('تم حفظ التغييرات بنجاح!');
+            } else {
+                console.error('فشل حفظ التغييرات: ' + result.message);
+            }
+        } catch (error) {
+            console.error("خطأ في حفظ البيانات:", error);
+        }
+      };
+
+      const handleLogin = () => {
+        setLoginError('');
+        if (loginRole === 'teacher') {
+          if (devUsername === DEV_USERNAME && devPassword === DEV_PASSWORD) {
+            setCurrentUser('teacher');
+            setCurrentPage('dashboard');
+          } else {
+            setLoginError('اسم المستخدم أو كلمة المرور غير صحيحة للمطور.');
+          }
+        } else if (loginRole === 'student') {
+          const user = usersData.find(u => u.username === userUsernameInput && u.access_code === userAccessCodeInput);
+          if (user) {
+            setCurrentUser('student');
+            setCurrentUsername(user.username);
+            setCurrentPage('dashboard');
+          } else {
+            setLoginError('اسم المستخدم أو رمز الدخول غير صحيح.');
+          }
+        }
+      };
+      
+      const handleGenerateAccessCode = (username) => {
+        if (!username) {
+          console.error('الرجاء إدخال اسم المستخدم أولاً.');
+          return;
+        }
+        const existingUser = usersData.find(u => u.username === username);
+        if (existingUser) {
+          console.error('هذا المستخدم موجود بالفعل.');
+          return;
+        }
+
+        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const newUser = {
+          username: username,
+          accessCode: newCode, // Note: The backend uses 'access_code'
+          access_code: newCode,
+          scores: {},
+          attemptsLeft: {}
+        };
+        setUsersData(prevUsers => [...prevUsers, newUser]);
+        setDevUsernameToGenerate('');
+        console.log(`تم توليد رمز دخول جديد للمستخدم ${username}: ${newCode}`);
+      };
+
+      const handleDeleteUser = (usernameToDelete) => {
+        setUsersData(prevUsers => prevUsers.filter(user => user.username !== usernameToDelete));
+        console.log(`تم حذف المستخدم ${usernameToDelete} بنجاح.`);
+      };
+
+      const handleResetSingleTestAttempts = (username, testId) => {
+        setUsersData(prevUsers =>
+          prevUsers.map(user => {
+            if (user.username === username) {
+              const newAttemptsLeft = { ...user.attemptsLeft };
+              delete newAttemptsLeft[testId];
+              return { ...user, attemptsLeft: newAttemptsLeft };
+            }
+            return user;
+          })
+        );
+        console.log(`تم تجديد محاولات الاختبار للمستخدم ${username}.`);
+      };
+
+
+      const handleDeleteTest = (testId, category) => {
+        setTestsData(prevTests => {
+          const newTests = { ...prevTests };
+          newTests[category] = newTests[category].filter(test => test.id !== testId);
+          return newTests;
+        });
+
+        setUsersData(prevUsers => {
+            return prevUsers.map(user => {
+                const newScores = {...user.scores};
+                delete newScores[testId];
+                const newAttemptsLeft = {...user.attemptsLeft};
+                delete newAttemptsLeft[testId];
+                return {...user, scores: newScores, attemptsLeft: newAttemptsLeft};
+            });
+        });
+
+        console.log('تم حذف الاختبار وجميع الدرجات المتعلقة به بنجاح.');
+      };
+
+      const handleReturnToLanding = () => {
+        // Auto-save data on logout from developer dashboard
+        if (currentUser === 'teacher') {
+            handleSaveChanges();
+        }
+        
+        setDevUsername('');
+        setDevPassword('');
+        setUserUsernameInput('');
+        setUserAccessCodeInput('');
+        setLoginError('');
+        setCurrentPage('landing');
+        setCurrentUser(null);
+        setLoginRole(null);
+      };
+
+
+      const handleStartTest = (testId) => {
+        const allTests = [...testsData.كمي, ...testsData.لفظي];
+        const test = allTests.find(t => t.id === testId);
+        
+        const currentUserData = usersData.find(u => u.username === currentUsername);
+        if (!currentUserData) {
+          console.error("حدث خطأ في بيانات المستخدم.");
+          return;
+        }
+        
+        const attemptsLeft = currentUserData.attemptsLeft[test.id] !== undefined
+          ? currentUserData.attemptsLeft[test.id]
+          : test.maxAttempts;
+
+        if (attemptsLeft <= 0) {
+          console.error("لا توجد فرص متبقية لهذا الاختبار.");
+          return;
+        }
+
+        const allAttempts = Object.values(currentUserData.scores).flat();
+        const totalScored = allAttempts.reduce((acc, scoreData) => acc + scoreData.score, 0);
+        const totalPossible = allAttempts.reduce((acc, scoreData) => acc + scoreData.total, 0);
+        const overallPercentage = totalPossible > 0 ? ((totalScored / totalPossible) * 100) : 0;
+        const prerequisite = test.prerequisitePercentage || 0;
+
+        if (overallPercentage < prerequisite) {
+            console.error(`لا يمكنك بدء هذا الاختبار. يتطلب نسبة كلية تبلغ ${prerequisite}% على الأقل.`);
+            return;
+        }
+
+        setSelectedTest(test);
+        setAnswers({});
+        setQuizSubmitted(false);
+        setTimer(test.duration * 60);
+        setCurrentPage('test');
+        setCurrentQuestionIndex(0);
+      };
+      
+      const handleNextQuestion = () => {
+        if (currentQuestionIndex < selectedTest.questions.length - 1) {
+          setCurrentQuestionIndex(prevIndex => prevIndex + 1);
+        }
+      };
+
+      const handlePreviousQuestion = () => {
+        if (currentQuestionIndex > 0) {
+          setCurrentQuestionIndex(prevIndex => prevIndex - 1);
+        }
+      };
+
+      const handleAnswerChange = (questionId, selectedOption) => {
+        setAnswers({
+          ...answers,
+          [questionId]: selectedOption
+        });
+      };
+
+      const handleSubmitTest = useCallback(() => {
+        if (quizSubmitted) return;
+        setQuizSubmitted(true);
+
+        const score = selectedTest.questions.filter(q => answers[q.id] === q.correctAnswer).length;
+        const timeTaken = selectedTest.duration * 60 - timer;
+        
+        setUsersData(prevUsers => {
+          return prevUsers.map(user => {
+            if (user.username === currentUsername) {
+              const newAttemptsLeft = (user.attemptsLeft[selectedTest.id] !== undefined
+                ? user.attemptsLeft[selectedTest.id]
+                : selectedTest.maxAttempts) - 1;
+                
+              const newScoreData = {
+                score: score,
+                total: selectedTest.questions.length,
+                date: new Date().toLocaleDateString('ar-SA'),
+                time: new Date().toLocaleTimeString('ar-SA'),
+                timeTaken: timeTaken
+              };
+
+              const updatedScores = { ...user.scores };
+              if (!updatedScores[selectedTest.id]) {
+                updatedScores[selectedTest.id] = [];
+              }
+              updatedScores[selectedTest.id].push(newScoreData);
+                
+              return {
+                ...user,
+                scores: updatedScores,
+                attemptsLeft: {
+                  ...user.attemptsLeft,
+                  [selectedTest.id]: newAttemptsLeft
+                }
+              };
+            }
+            return user;
+          });
+        });
+
+        setCurrentPage('results');
+      }, [answers, currentUsername, quizSubmitted, selectedTest, timer]);
+
+      const [showUserScores, setShowUserScores] = useState(false);
+      const [userScoresToShow, setUserScoresToShow] = useState(null);
+
+      const handleShowUserScores = (user) => {
+        setUserScoresToShow(user);
+        setShowUserScores(true);
+      };
+
+      const handleCloseUserScores = () => {
+        setShowUserScores(false);
+        setUserScoresToShow(null);
+      };
+
+      // Handlers for manual quiz creation
+      const handleAddQuestion = () => {
+        setNewTestQuestions([...newTestQuestions, {
+          id: newTestQuestions.length + 1,
+          text: '',
+          imageUrl: '',
+          type: 'mcq',
+          options: [
+            { id: 'a', text: '', imageUrl: '' },
+            { id: 'b', text: '', imageUrl: '' },
+            { id: 'c', text: '', imageUrl: '' },
+            { id: 'd', text: '', imageUrl: '' }
+          ],
+          correctAnswer: 'a'
+        }]);
+      };
+
+      const handleUpdateQuestion = (qIndex, field, value) => {
+        const updatedQuestions = [...newTestQuestions];
+        updatedQuestions[qIndex][field] = value;
+        setNewTestQuestions(updatedQuestions);
+      };
+      
+      const handleUpdateCorrectAnswer = (qIndex, value) => {
+        const updatedQuestions = [...newTestQuestions];
+        updatedQuestions[qIndex].correctAnswer = value;
+        setNewTestQuestions(updatedQuestions);
+      };
+
+      const handleUpdateOption = (qIndex, oIndex, value) => {
+        const updatedQuestions = [...newTestQuestions];
+        updatedQuestions[qIndex].options[oIndex].text = value;
+        setNewTestQuestions(updatedQuestions);
+      };
+      
+      const resetCreateTestForm = () => {
+          setNewTestTitle('');
+          setNewTestDuration('');
+          setNewTestMaxAttempts('');
+          setNewTestPrerequisite('');
+          setNewTestQuestions([]);
+          setShowCreateTestForm(false);
+          setEditingTestId(null);
+      }
+
+      const handleSaveNewTest = () => {
+        if (!newTestTitle || !newTestDuration || !newTestMaxAttempts || newTestQuestions.length === 0) {
+            console.error('الرجاء إكمال جميع الحقول.');
+            return;
+        }
+
+        if(editingTestId) {
+            // Update logic
+            setTestsData(prev => {
+              const newTestsData = JSON.parse(JSON.stringify(prev));
+              let testFoundAndUpdated = false;
+              for (const category in newTestsData) {
+                  const testIndex = newTestsData[category].findIndex(t => t.id === editingTestId);
+                  if (testIndex !== -1) {
+                      newTestsData[category][testIndex] = {
+                          ...newTestsData[category][testIndex],
+                          title: newTestTitle,
+                          duration: parseInt(newTestDuration, 10),
+                          maxAttempts: parseInt(newTestMaxAttempts, 10),
+                          prerequisitePercentage: parseInt(newTestPrerequisite, 10) || 0,
+                          questions: newTestQuestions
+                      };
+                      testFoundAndUpdated = true;
+                      break;
+                  }
+              }
+              return newTestsData;
+            });
+            console.log('تم تحديث الاختبار بنجاح!');
+        } else {
+            // Create logic
+            const newTest = {
+              id: Date.now(),
+              title: newTestTitle,
+              duration: parseInt(newTestDuration, 10),
+              maxAttempts: parseInt(newTestMaxAttempts, 10),
+              prerequisitePercentage: parseInt(newTestPrerequisite, 10) || 0,
+              questions: newTestQuestions
+            };
+            setTestsData(prev => ({
+              ...prev,
+              [newTestCategory]: [...(prev[newTestCategory] || []), newTest]
+            }));
+            console.log('تم حفظ الاختبار الجديد بنجاح!');
+        }
+        resetCreateTestForm();
+      };
+
+      const handleEditTest = (testToEdit, category) => {
+        setEditingTestId(testToEdit.id);
+        setNewTestTitle(testToEdit.title);
+        setNewTestDuration(testToEdit.duration.toString());
+        setNewTestMaxAttempts(testToEdit.maxAttempts.toString());
+        setNewTestPrerequisite(testToEdit.prerequisitePercentage?.toString() || '0');
+        setNewTestQuestions(JSON.parse(JSON.stringify(testToEdit.questions))); // Deep copy
+        setNewTestCategory(category);
+        setShowCreateTestForm(true);
+      };
+      
+      const handleManualImageUpload = (event, qIndex, type, oIndex = null) => {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const updatedQuestions = [...newTestQuestions];
+            if (type === 'question') {
+              updatedQuestions[qIndex].imageUrl = reader.result;
+            } else if (type === 'option') {
+              updatedQuestions[qIndex].options[oIndex].imageUrl = reader.result;
+            }
+            setNewTestQuestions(updatedQuestions);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      
+      const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          setUploadedFile(file);
+          setShowFileUploadModal(true);
+        }
+      };
+
+      const handleGenerateQuizFromFile = async () => {
+        if (!uploadedFile || !uploadedQuizDuration || !uploadedQuizAttempts) {
+          console.error('الرجاء إدخال جميع إعدادات الاختبار.');
+          return;
+        }
+
+        setShowFileUploadModal(false);
+        setFileLoading(true);
+
+        const simulatedFileContent = `
+        السؤال 1: ما هي عاصمة المملكة العربية السعودية؟
+        أ) جدة
+        ب) الرياض
+        ج) الدمام
+        د) مكة المكرمة
+        الإجابة الصحيحة: ب
+
+        السؤال 2: متى تم توحيد المملكة العربية السعودية؟
+        أ) 1902
+        ب) 1923
+        ج) 1932
+        د) 1945
+        الإجابة الصحيحة: ج
+
+        السؤال 3: ما هو اسم العملة الرسمية في السعودية؟
+        أ) الدرهم
+        ب) الدينار
+        ج) الجنيه
+        د) الريال
+        الإجابة الصحيحة: د
+        `;
+
+        const prompt = `استخدم المحتوى التالي لإنشاء اختبار من 3 أسئلة اختيار من متعدد باللغة العربية. يجب أن يحتوي كل سؤال على 4 خيارات وإجابة صحيحة واحدة. المحتوى هو: "${simulatedFileContent}"`;
+
+        const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+        const payload = {
+          contents: chatHistory,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                "title": { "type": "STRING" },
+                "questions": {
+                  "type": "ARRAY",
+                  "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                      "id": { "type": "INTEGER" },
+                      "text": { "type": "STRING" },
+                      "type": { "type": "STRING", "default": "mcq" },
+                      "options": {
+                        "type": "ARRAY",
+                        "items": {
+                          "type": "OBJECT",
+                          "properties": {
+                            "id": { "type": "STRING" },
+                            "text": { "type": "STRING" }
+                          }
+                        }
+                      },
+                      "correctAnswer": { "type": "STRING" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        };
+        const apiKey = "";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+          if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+            const jsonString = result.candidates[0].content.parts[0].text.replace(/```json\n|\n```/g, '');
+            try {
+                const uploadedQuiz = JSON.parse(jsonString);
+                
+                const newTest = {
+                  id: Date.now(),
+                  title: uploadedQuiz.title || (uploadedFile ? uploadedFile.name : "اختبار جديد"),
+                  duration: parseInt(uploadedQuizDuration, 10),
+                  maxAttempts: parseInt(uploadedQuizAttempts, 10),
+                  prerequisitePercentage: parseInt(uploadedQuizPrerequisite, 10) || 0,
+                  questions: uploadedQuiz.questions.map(q => ({...q, imageUrl: '', options: q.options.map(o => ({...o, imageUrl: ''}))}))
+                };
+
+                setTestsData(prev => ({
+                  ...prev,
+                  [uploadedQuizCategory]: [...(prev[uploadedQuizCategory] || []), newTest]
+                }));
+
+                console.log('تم إنشاء الاختبار من الملف بنجاح!');
+            } catch (parseError) {
+                console.error("Error parsing JSON from file generation:", parseError);
+                console.error("Malformed JSON string was:", jsonString);
+            }
+          } else {
+            console.error("Unexpected API response structure:", result);
+          }
+        } catch (error) {
+          console.error("Error generating quiz from file:", error);
+        } finally {
+          setFileLoading(false);
+          setUploadedFile(null);
+          setUploadedQuizDuration('');
+          setUploadedQuizAttempts('');
+          setUploadedQuizPrerequisite('');
+        }
+      };
+
+
+      const handlePreviewQuiz = (test) => {
+        setPreviewQuiz(JSON.parse(JSON.stringify(test))); // Deep copy to avoid direct state mutation
+        setCurrentPage('preview');
+      };
+
+      const handleClosePreview = () => {
+        setPreviewQuiz(null);
+        setCurrentPage('dashboard');
+        setCurrentQuestionIndex(0);
+      };
+      
+      const handleSavePreview = () => {
+        if (!previewQuiz) return;
+        setTestsData(prevTests => {
+          const newTests = { ...prevTests };
+          let found = false;
+          for (const category in newTests) {
+            const testIndex = newTests[category].findIndex(t => t.id === previewQuiz.id);
+            if (testIndex !== -1) {
+              newTests[category][testIndex] = previewQuiz;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            console.log("Could not find test to save in existing data.");
+          }
+          return newTests;
+        });
+        console.log('تم حفظ التغييرات بنجاح!');
+        handleClosePreview();
+      };
+
+      const formatTime = (seconds) => {
+          if (isNaN(seconds) || seconds < 0) return "00:00";
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      const ThemeToggleButton = () => (
+          <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+          >
+              {darkMode ? (
+                  // Sun Icon
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+              ) : (
+                  // Moon Icon
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+              )}
+          </button>
+      );
+      
+      // Render Landing Page
+      const renderLandingPage = () => (
+        <div className="flex flex-col items-center justify-center min-h-screen animated-gradient text-center p-4 relative" dir="rtl">
+          <div className="absolute top-8 bg-white p-2 rounded-full shadow-lg transition-transform duration-300 ease-in-out hover:scale-110">
+              <img 
+                src="https://storage.googleapis.com/yaschools/backend/media/school/logos/-j1W4n4lL-RzSZ70krDWF1RQV8cjbsJW.jpg" 
+                alt="شعار" 
+                className="h-32 w-32 rounded-full object-contain"
+                onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/128x128/FFFFFF/000000?text=شعار" }}
+              />
+          </div>
+          <h1 className="text-5xl font-bold text-white mb-4 drop-shadow-lg mt-48">أهلاً بك في منصة الاختبارات</h1>
+          {!isDataLoaded ? (
+            <p className="text-xl text-gray-200 mb-12 drop-shadow-md">جاري تحميل البيانات...</p>
+          ) : (
+            <>
+            <p className="text-xl text-gray-200 mb-12 drop-shadow-md">اختر طريقة الدخول للمتابعة</p>
+            <div className="flex flex-col space-y-6 items-center">
+              <button 
+                onClick={() => { setLoginRole('student'); setCurrentPage('login'); }} 
+                className="bg-white/20 hover:bg-white/30 text-white font-bold py-4 px-10 rounded-full text-xl transition duration-300 transform hover:scale-105 shadow-lg backdrop-blur-sm border border-white/30 w-64 flex items-center justify-center space-x-3"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                </svg>
+                <span>الدخول كمستخدم</span>
+              </button>
+              <button 
+                onClick={() => { setLoginRole('teacher'); setCurrentPage('login'); }} 
+                className="bg-white/20 hover:bg-white/30 text-white font-bold py-4 px-10 rounded-full text-xl transition duration-300 transform hover:scale-105 shadow-lg backdrop-blur-sm border border-white/30 w-64 flex items-center justify-center space-x-3"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                <span>الدخول كمطور</span>
+              </button>
+            </div>
+            </>
+          )}
+          <footer className="absolute bottom-4 text-white/70 text-sm">
+            جميع الحقوق محفوظة لدى Bungus ® 2025-2026
+          </footer>
+        </div>
+      );
+
+      // Render Login Page
+      const renderLoginPage = () => (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900" dir="rtl">
+          <div className="absolute top-4 left-4">
+              <ThemeToggleButton />
+          </div>
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-md">
+            <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-6">
+              تسجيل الدخول - {loginRole === 'teacher' ? 'مطور' : 'مستخدم'}
+            </h2>
+            {loginError && <p className="text-red-500 text-center mb-4">{loginError}</p>}
+            {loginRole === 'teacher' ? (
+              <div>
+                <input
+                  type="text"
+                  placeholder="اسم المستخدم"
+                  value={devUsername}
+                  onChange={(e) => setDevUsername(e.target.value)}
+                  className="w-full p-3 mb-4 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="password"
+                  placeholder="كلمة المرور"
+                  value={devPassword}
+                  onChange={(e) => setDevPassword(e.target.value)}
+                  className="w-full p-3 mb-4 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  placeholder="اسم المستخدم"
+                  value={userUsernameInput}
+                  onChange={(e) => setUserUsernameInput(e.target.value)}
+                  className="w-full p-3 mb-4 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="رمز الدخول"
+                  value={userAccessCodeInput}
+                  onChange={(e) => setUserAccessCodeInput(e.target.value)}
+                  className="w-full p-3 mb-4 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+            <button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-300">
+              دخول
+            </button>
+            <button onClick={handleReturnToLanding} className="w-full mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition duration-300">
+              العودة
+            </button>
+          </div>
+        </div>
+      );
+      
+      // Render Teacher Dashboard
+      const renderTeacherDashboard = () => (
+        <div className="p-8 bg-gray-100 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100" dir="rtl">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold">لوحة تحكم المطور</h1>
+            <div className="flex items-center space-x-4">
+              <ThemeToggleButton />
+              <button onClick={handleReturnToLanding} className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-xl">تسجيل الخروج</button>
+            </div>
+          </div>
+
+          {/* User Management */}
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <h2 className="text-2xl font-bold mb-4">إدارة المستخدمين</h2>
+            <div className="flex items-center mb-4">
+              <input
+                type="text"
+                placeholder="اسم مستخدم جديد"
+                value={devUsernameToGenerate}
+                onChange={(e) => setDevUsernameToGenerate(e.target.value)}
+                className="p-2 border rounded-lg ml-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+              />
+              <button onClick={() => handleGenerateAccessCode(devUsernameToGenerate)} className="bg-green-500 text-white p-2 rounded-lg">إنشاء رمز دخول</button>
+            </div>
+            <ul className="space-y-2">
+              {usersData.map(user => (
+                <li key={user.username} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <span>{user.username} (الرمز: {user.access_code})</span>
+                  <div>
+                    <button onClick={() => handleShowUserScores(user)} className="bg-blue-500 text-white p-1 px-2 rounded-lg ml-2">عرض البيانات</button>
+                    <button onClick={() => handleDeleteUser(user.username)} className="bg-red-500 text-white p-1 px-2 rounded-lg">حذف</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+          
+          {/* Create New Test */}
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <h2 className="text-2xl font-bold mb-4">إنشاء اختبار جديد</h2>
+            {!showCreateTestForm ? (
+                <div className="flex space-x-4 rtl:space-x-reverse">
+                    <button onClick={() => { setShowCreateTestForm(true); setNewTestCategory('كمي'); }} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-transform transform hover:scale-105">
+                        اضافة اختبار كمي
+                    </button>
+                    <button onClick={() => { setShowCreateTestForm(true); setNewTestCategory('لفظي'); }} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-transform transform hover:scale-105">
+                        اضافة اختبار لفظي
+                    </button>
+                </div>
+            ) : (
+                <div>
+                    <h3 className="text-xl font-semibold mb-4">{editingTestId ? `تعديل اختبار ${newTestCategory}` : `إضافة اختبار ${newTestCategory} جديد`}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        <input type="text" placeholder="عنوان الاختبار" value={newTestTitle} onChange={(e) => setNewTestTitle(e.target.value)} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                        <input type="number" placeholder="المدة (دقائق)" value={newTestDuration} onChange={(e) => setNewTestDuration(e.target.value)} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                        <input type="number" placeholder="أقصى عدد محاولات" value={newTestMaxAttempts} onChange={(e) => setNewTestMaxAttempts(e.target.value)} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                        <input type="number" placeholder="النسبة المطلوبة لدخول الاختبار (%)" value={newTestPrerequisite} onChange={(e) => setNewTestPrerequisite(e.target.value)} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                    </div>
+                    {newTestQuestions.map((q, qIndex) => (
+                        <div key={q.id} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg mb-4 border dark:border-gray-600">
+                            <h4 className="font-bold mb-2">السؤال {qIndex + 1}</h4>
+                            <textarea value={q.text} onChange={(e) => handleUpdateQuestion(qIndex, 'text', e.target.value)} placeholder="نص السؤال" className="w-full p-2 border rounded-lg mb-2 bg-white dark:bg-gray-600"></textarea>
+                            <label className="block mb-2 text-sm font-medium">رفع صورة للسؤال (اختياري):</label>
+                            <input type="file" accept="image/*" onChange={(e) => handleManualImageUpload(e, qIndex, 'question')} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-2"/>
+                            {q.imageUrl && <img src={q.imageUrl} className="w-32 h-32 object-cover rounded-lg my-2" alt="معاينة السؤال"/>}
+
+                            {q.options.map((opt, oIndex) => (
+                                <div key={opt.id} className="flex items-center mb-2 bg-white dark:bg-gray-600 p-2 rounded-lg">
+                                    <input type="radio" name={`correct-answer-${qIndex}`} checked={q.correctAnswer === opt.id} onChange={() => handleUpdateCorrectAnswer(qIndex, opt.id)} className="ml-2"/>
+                                    <input type="text" value={opt.text} onChange={(e) => handleUpdateOption(qIndex, oIndex, e.target.value)} placeholder={`الخيار ${String.fromCharCode(97 + oIndex)}`} className="p-2 border rounded-lg flex-grow bg-white dark:bg-gray-500"/>
+                                    <div className="ml-4">
+                                      <label className="text-xs">صورة للخيار:</label>
+                                      <input type="file" accept="image/*" onChange={(e) => handleManualImageUpload(e, qIndex, 'option', oIndex)} className="block w-full text-xs text-gray-500 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:bg-gray-50 hover:file:bg-gray-100"/>
+                                      {opt.imageUrl && <img src={opt.imageUrl} className="w-16 h-16 object-cover rounded-md mt-1" alt="معاينة الخيار"/>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                    <div className="flex space-x-4 rtl:space-x-reverse">
+                        <button onClick={handleAddQuestion} className="bg-gray-200 dark:bg-gray-600 p-2 rounded-lg">إضافة سؤال</button>
+                        <button onClick={handleSaveNewTest} className="bg-green-500 text-white p-2 rounded-lg">{editingTestId ? 'تحديث الاختبار' : 'حفظ الاختبار'}</button>
+                        <button onClick={resetCreateTestForm} className="bg-red-500 text-white p-2 rounded-lg">إلغاء</button>
+                    </div>
+                </div>
+            )}
+          </div>
+          
+          {/* Create Test from File */}
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+              <h2 className="text-2xl font-bold mb-4">إنشاء اختبار من ملف</h2>
+              <p className="text-gray-600 dark:text-gray-300 mb-4">ارفع ملف Word أو PDF وسيقوم الذكاء الاصطناعي بتحويله إلى اختبار.</p>
+              <input 
+                type="file" 
+                accept=".doc,.docx,.pdf" 
+                onChange={handleFileSelect} 
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                disabled={fileLoading}
+              />
+              {fileLoading && <p className="text-blue-500 mt-2">جاري تحليل الملف وإنشاء الاختبار...</p>}
+          </div>
+
+
+          {/* Existing Tests */}
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+             <h2 className="text-2xl font-bold mb-4">الاختبارات الحالية</h2>
+             {Object.keys(testsData).length === 0 || (testsData['كمي'].length === 0 && testsData['لفظي'].length === 0) ? (
+                <p>لا توجد اختبارات حالية.</p>
+             ) : (
+                Object.keys(testsData).map(category => (
+                    <div key={category}>
+                        {testsData[category].length > 0 && <h3 className="text-xl font-semibold mt-4 mb-2">{category}</h3>}
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {testsData[category].map(test => (
+                                <div key={test.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                                    <h4 className="text-lg font-bold">{test.title}</h4>
+                                    <p>{test.questions.length} أسئلة</p>
+                                    <div className="mt-4 flex space-x-2 rtl:space-x-reverse">
+                                        <button onClick={() => handlePreviewQuiz(test)} className="flex-1 bg-blue-500 text-white p-2 rounded-lg">معاينة</button>
+                                        <button onClick={() => handleEditTest(test, category)} className="flex-1 bg-yellow-500 text-white p-2 rounded-lg">تعديل</button>
+                                        <button onClick={() => handleDeleteTest(test.id, category)} className="flex-1 bg-red-500 text-white p-2 rounded-lg">حذف</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                 ))
+             )}
+          </div>
+          
+          {/* Save Changes Button */}
+          <div className="mt-8 flex justify-center">
+              <button 
+                onClick={handleSaveChanges} 
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl text-lg transition duration-300 transform hover:scale-105 shadow-lg"
+              >
+                حفظ التغييرات
+              </button>
+          </div>
+        </div>
+      );
+      
+      // Render Student Dashboard
+      const renderStudentDashboard = () => {
+        const currentUserData = usersData.find(u => u.username === currentUsername);
+        const allTests = [...testsData.كمي, ...testsData.لفظي];
+
+        if (!currentUserData) {
+            return <p>جاري تحميل بيانات المستخدم...</p>;
+        }
+        
+        const allAttempts = Object.values(currentUserData.scores).flat();
+        const totalScored = allAttempts.reduce((acc, scoreData) => acc + scoreData.score, 0);
+        const totalPossible = allAttempts.reduce((acc, scoreData) => acc + scoreData.total, 0);
+        const overallPercentage = totalPossible > 0 ? ((totalScored / totalPossible) * 100).toFixed(2) : 0;
+
+        return (
+          <div className="p-8 bg-gray-100 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100" dir="rtl">
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold">أهلاً بك، {currentUsername}</h1>
+              <div className="flex items-center space-x-4">
+                <ThemeToggleButton />
+                <button onClick={handleReturnToLanding} className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-xl">تسجيل الخروج</button>
+              </div>
+            </div>
+
+            {/* Overall Percentage */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-bold mb-2">ملخص الأداء</h2>
+                <p className="text-lg">النسبة الكلية لجميع الاختبارات: <span className="font-bold text-blue-500">{overallPercentage}%</span></p>
+            </div>
+            
+            {/* Available Tests */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+              <h2 className="text-2xl font-bold mb-4">الاختبارات المتاحة</h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {allTests.length > 0 ? allTests.map(test => {
+                  const attemptsLeft = currentUserData.attemptsLeft[test.id] !== undefined
+                    ? currentUserData.attemptsLeft[test.id]
+                    : test.maxAttempts;
+                  const prerequisite = test.prerequisitePercentage || 0;
+                  const isLocked = overallPercentage < prerequisite;
+
+                  return (
+                    <div key={test.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                      <h3 className="text-xl font-bold">{test.title}</h3>
+                      <p>المدة: {test.duration} دقيقة</p>
+                      <p>المحاولات المتبقية: {attemptsLeft}</p>
+                      {isLocked && <p className="text-sm text-red-500 mt-1">مغلق (يتطلب {prerequisite}% للوصول)</p>}
+                      <button 
+                        onClick={() => handleStartTest(test.id)}
+                        disabled={attemptsLeft <= 0 || isLocked}
+                        className="mt-4 w-full bg-blue-500 text-white p-2 rounded-lg disabled:bg-gray-400">
+                        {isLocked ? 'مغلق' : (attemptsLeft > 0 ? 'ابدأ الاختبار' : 'لا توجد محاولات')}
+                      </button>
+                    </div>
+                  );
+                }) : <p>لا توجد اختبارات متاحة حالياً.</p>}
+              </div>
+            </div>
+
+            {/* Scores */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                <h2 className="text-2xl font-bold mb-4">درجاتي</h2>
+                {Object.keys(currentUserData.scores).length > 0 ? (
+                  <ul className="space-y-2">
+                      {Object.keys(currentUserData.scores).map(testId => {
+                          const testTitle = allTests.find(t => t.id == testId)?.title || "اختبار محذوف";
+                          return currentUserData.scores[testId].map((scoreData, index) => (
+                              <li key={`${testId}-${index}`} className="p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                  <strong>{testTitle}:</strong> {scoreData.score} / {scoreData.total} 
+                                  <span className="text-sm text-gray-500 dark:text-gray-400 mr-4">({scoreData.date} - {scoreData.time})</span>
+                              </li>
+                          ));
+                      })}
+                  </ul>
+                ) : <p>لا توجد درجات مسجلة بعد.</p>}
+            </div>
+          </div>
+        );
+      };
+
+      const renderPreviewPage = () => {
+        if (!previewQuiz) {
+          return null;
+        }
+
+        const question = previewQuiz.questions[currentQuestionIndex];
+        const isFirstQuestion = currentQuestionIndex === 0;
+        const isLastQuestion = currentQuestionIndex === previewQuiz.questions.length - 1;
+
+        return (
+          <div className="flex flex-col items-center min-h-screen bg-gray-100 dark:bg-gray-900 font-sans p-4" dir="rtl">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-4xl mt-10">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{previewQuiz.title}</h1>
+                <div className="flex items-center space-x-4">
+                  <ThemeToggleButton />
+                  <button onClick={handleClosePreview} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-xl transition duration-300">
+                    إغلاق المعاينة
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl shadow-inner mb-6 border border-gray-200 dark:border-gray-600">
+                {question.imageUrl && (
+                  <img
+                    src={question.imageUrl}
+                    alt={`صورة للسؤال رقم ${currentQuestionIndex + 1}`}
+                    className="w-full max-h-60 object-contain rounded-lg mb-4"
+                  />
+                )}
+                <p className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  {currentQuestionIndex + 1}. {question.text}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {question.options.map(option => (
+                    <div
+                      key={option.id}
+                      className={`flex flex-col items-center justify-center p-4 rounded-lg border-2
+                      ${question.correctAnswer === option.id ? 'bg-green-100 dark:bg-green-900 border-green-500' : 'bg-white dark:bg-gray-800'}`}
+                    >
+                      {option.imageUrl && <img src={option.imageUrl} className="w-24 h-24 object-contain rounded-md mb-2" />}
+                      <span className="text-gray-900 dark:text-white text-center font-bold">{option.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="mt-8 flex justify-between">
+                <button
+                  onClick={() => setCurrentQuestionIndex(prevIndex => prevIndex - 1)}
+                  disabled={isFirstQuestion}
+                  className={`bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105 shadow-md
+                  ${isFirstQuestion ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  السابق
+                </button>
+                <button
+                  onClick={() => setCurrentQuestionIndex(prevIndex => prevIndex + 1)}
+                  disabled={isLastQuestion}
+                  className={`bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105 shadow-md
+                  ${isLastQuestion ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Render the Test page
+      const renderTestPage = () => {
+        if (!selectedTest) return null;
+        const question = selectedTest.questions[currentQuestionIndex];
+        const isFirstQuestion = currentQuestionIndex === 0;
+        const isLastQuestion = currentQuestionIndex === selectedTest.questions.length - 1;
+
+        return (
+          <div className="flex flex-col items-center min-h-screen bg-gray-100 dark:bg-gray-900 font-sans p-4" dir="rtl">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-4xl mt-10">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedTest.title}</h1>
+                <div className="flex items-center space-x-4">
+                  <ThemeToggleButton />
+                  <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold">
+                    متبقي: {formatTime(timer)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl shadow-inner mb-6 border border-gray-200 dark:border-gray-600">
+                {question.imageUrl && (
+                  <img
+                    src={question.imageUrl}
+                    alt={`صورة للسؤال رقم ${currentQuestionIndex + 1}`}
+                    className="w-full max-h-60 object-contain rounded-lg mb-4"
+                  />
+                )}
+                <p className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  {currentQuestionIndex + 1}. {question.text}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {question.options.map(option => (
+                    <label
+                      key={option.id}
+                      onClick={() => handleAnswerChange(question.id, option.id)}
+                      className={`flex flex-col items-center justify-center cursor-pointer p-4 rounded-lg border-2 transition duration-200
+                      ${answers[question.id] === option.id ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                    >
+                      {option.imageUrl && <img src={option.imageUrl} className="w-24 h-24 object-contain rounded-md mb-2" />}
+                      <span className="text-gray-900 dark:text-white text-center font-bold">{option.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="mt-8 flex justify-between">
+                <button
+                  onClick={handlePreviousQuestion}
+                  disabled={isFirstQuestion}
+                  className={`bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105 shadow-md
+                  ${isFirstQuestion ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  السابق
+                </button>
+                {isLastQuestion ? (
+                  <button
+                    onClick={handleSubmitTest}
+                    disabled={quizSubmitted}
+                    className={`bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105 shadow-md
+                    ${quizSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    إرسال الاختبار
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNextQuestion}
+                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105 shadow-md"
+                  >
+                    التالي
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Render the results page
+      const renderResultsPage = () => {
+        if (!selectedTest) return null;
+        let score = 0;
+        let totalQuestions = selectedTest.questions.length;
+
+        selectedTest.questions.forEach(question => {
+          if (answers[question.id] === question.correctAnswer) {
+            score++;
+          }
+        });
+
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 font-sans p-4" dir="rtl">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-4xl text-center">
+              <div className="absolute top-4 left-4">
+                <ThemeToggleButton />
+              </div>
+              <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">نتائج الاختبار</h1>
+              <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
+                لقد أنهيت اختبار: <span className="font-semibold text-blue-500">{selectedTest.title}</span>
+              </p>
+
+              <div className="mb-8">
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  درجتك: <span className="text-green-500">{score}</span> / <span className="text-blue-500">{totalQuestions}</span>
+                </p>
+              </div>
+              
+              <div className="text-right">
+                {selectedTest.questions.map((question, qIndex) => (
+                  <div key={question.id} className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl shadow-inner mb-6 border border-gray-200 dark:border-gray-600 text-right">
+                    {question.imageUrl && (
+                      <img
+                        src={question.imageUrl}
+                        alt={`صورة للسؤال رقم ${qIndex + 1}`}
+                        className="w-full max-h-60 object-contain rounded-lg mb-4"
+                      />
+                    )}
+                    <p className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                      {qIndex + 1}. {question.text}
+                    </p>
+                    <div className="mt-2 text-gray-700 dark:text-gray-300">
+                      <p className={`mb-1 ${answers[question.id] === question.correctAnswer ? 'text-green-600' : 'text-red-600'}`}>
+                        <span className="font-bold">إجابتك:</span> {
+                          question.options.find(opt => opt.id === answers[question.id])?.text || 'لم يتم الإجابة'
+                        }
+                      </p>
+                      <p>
+                        <span className="font-bold text-green-600 dark:text-green-400">الإجابة الصحيحة:</span> {
+                          question.options.find(opt => opt.id === question.correctAnswer)?.text
+                        }
+                      </p>
+                      
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage('dashboard')}
+                className="mt-8 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl transition duration-300 transform hover:scale-105 shadow-md"
+              >
+                العودة إلى لوحة التحكم
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const UserScoresModal = ({ user, onClose }) => {
+          if (!user) return null;
+          const allTests = [...testsData.كمي, ...testsData.لفظي];
+          
+          const allAttempts = Object.values(user.scores).flat();
+          const totalScored = allAttempts.reduce((acc, scoreData) => acc + scoreData.score, 0);
+          const totalPossible = allAttempts.reduce((acc, scoreData) => acc + scoreData.total, 0);
+          const overallPercentage = totalPossible > 0 ? ((totalScored / totalPossible) * 100).toFixed(2) : 0;
+
+          const getDayOfWeek = (dateString) => {
+            const date = new Date(dateString.split('/').reverse().join('-'));
+            return date.toLocaleDateString('ar-SA', { weekday: 'long' });
+          };
+
+          return (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-4xl w-full text-gray-900 dark:text-gray-100">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-xl font-bold">نتائج: {user.username}</h3>
+                          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white">&times;</button>
+                      </div>
+                      <div className="mb-4 text-center">
+                        <p className="text-lg">النسبة الكلية لجميع الاختبارات: <span className="font-bold text-blue-500">{overallPercentage}%</span></p>
+                      </div>
+                      
+                      <div className="max-h-96 overflow-y-auto">
+                          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                              <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                                  <tr>
+                                      <th scope="col" className="px-6 py-3">الاختبار</th>
+                                      <th scope="col" className="px-6 py-3">الدرجة</th>
+                                      <th scope="col" className="px-6 py-3">النسبة المئوية</th>
+                                      <th scope="col" className="px-6 py-3">المدة المستغرقة</th>
+                                      <th scope="col" className="px-6 py-3">التاريخ</th>
+                                      <th scope="col" className="px-6 py-3">اليوم</th>
+                                      <th scope="col" className="px-6 py-3">وقت الإرسال</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                  {Object.keys(user.scores).length > 0 ? Object.entries(user.scores).flatMap(([testId, scores]) => {
+                                      const test = allTests.find(t => t.id == testId);
+                                      if (!test) return [];
+                                      return scores.map((scoreData, index) => (
+                                          <tr key={`${testId}-${index}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+                                              <th scope="row" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{test.title}</th>
+                                              <td className="px-6 py-4">{scoreData.score} / {scoreData.total}</td>
+                                              <td className="px-6 py-4">{((scoreData.score / scoreData.total) * 100).toFixed(2)}%</td>
+                                              <td className="px-6 py-4">{formatTime(scoreData.timeTaken)}</td>
+                                              <td className="px-6 py-4">{scoreData.date}</td>
+                                              <td className="px-6 py-4">{getDayOfWeek(scoreData.date)}</td>
+                                              <td className="px-6 py-4">{scoreData.time}</td>
+                                          </tr>
+                                      ));
+                                  }) : (
+                                      <tr><td colSpan="7" className="text-center py-4">لا توجد نتائج لهذا المستخدم.</td></tr>
+                                  )}
+                              </tbody>
+                          </table>
+                      </div>
+                  </div>
+              </div>
+          );
+      };
+      
+      const FileUploadModal = ({ onClose }) => (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full">
+                  <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">إعدادات الاختبار المرفوع</h3>
+                  <div className="space-y-4">
+                      <input type="number" placeholder="مدة الاختبار (دقائق)" value={uploadedQuizDuration} onChange={(e) => setUploadedQuizDuration(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                      <input type="number" placeholder="عدد المحاولات" value={uploadedQuizAttempts} onChange={(e) => setUploadedQuizAttempts(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                      <input type="number" placeholder="النسبة المطلوبة لدخول الاختبار (%)" value={uploadedQuizPrerequisite} onChange={(e) => setUploadedQuizPrerequisite(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" />
+                      <select value={uploadedQuizCategory} onChange={(e) => setUploadedQuizCategory(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                          <option value="كمي">كمي</option>
+                          <option value="لفظي">لفظي</option>
+                      </select>
+                  </div>
+                  <div className="flex justify-end space-x-4 rtl:space-x-reverse mt-6">
+                      <button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">إلغاء</button>
+                      <button onClick={handleGenerateQuizFromFile} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">إنشاء الاختبار</button>
+                  </div>
+              </div>
+          </div>
+      );
+
+      // Render the correct page based on the current state
+      const renderCurrentPage = () => {
+        switch (currentPage) {
+          case 'landing':
+            return renderLandingPage();
+          case 'login':
+            return renderLoginPage();
+          case 'dashboard':
+            return currentUser === 'teacher' ? renderTeacherDashboard() : renderStudentDashboard();
+          case 'test':
+            return renderTestPage();
+          case 'results':
+            return renderResultsPage();
+          case 'preview':
+            return renderPreviewPage();
+          default:
+            return renderLandingPage();
+        }
+      };
+
+      return (
+        <div className="font-sans">
+          {renderCurrentPage()}
+          {showUserScores && <UserScoresModal user={userScoresToShow} onClose={handleCloseUserScores} />}
+          {showFileUploadModal && <FileUploadModal onClose={() => setShowFileUploadModal(false)} />}
+        </div>
+      );
+    }
+    
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
